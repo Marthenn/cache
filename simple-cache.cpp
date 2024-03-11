@@ -1,55 +1,61 @@
 #include <unordered_map>
 #include <list>
+#include <utility>
+#include <unistd.h>
+#include <fcntl.h>
+#include <cstdio>
+#include <string>
+#include <stdexcept>
 
-template <typename K, typename V>
-class Cache {
-private:
-  int capacity = 0; // The maximum number of elements in the cache
-  std::list<std::pair<K, V>> cacheList; // The list of elements in the cache
-  std::unordered_map<K, typename std::list<std::pair<K, V>>::iterator> cacheMap; // The map of elements in the cache
+namespace cache {
+  struct Key {
+    std::string mountingPoint;
+    off_t offset;
 
-public:
-  Cache(int capacity) : capacity(capacity) {}
+    Key(std::string mountingPoint, off_t offset) : mountingPoint(std::move(mountingPoint)), offset(offset) {}
+  };
 
-  V get(K key) {
-    if (cacheMap.fin(key) != cacheMap.end()){
-      auto it = cacheMap[key];
-      cacheList.push_front(*it);
-      cacheMap[key] = cacheList.begin();
-      auto val = it->second;
-      cacheList.erase(it);
-      return val;
-    }
-    return nullptr; // MISS
-  }
+  class Cache {
+  private:
+    int capacity = 0;
+    std::list<std::pair<Key, char>> cacheList;
+    std::unordered_map<Key, typename std::list<std::pair<Key, char>>::iterator> cacheMap;
 
-  void put(K key, V value) {
-    if (cacheMap.find(key) != cacheMap.end()) {
-      auto it = cacheMap[key];
-      cacheList.push_front(std::make_pair(key, value));
-      cacheMap[key] = cacheList.begin();
-      cacheList.erase(it);
-    } else {
-      if (cacheMap.size() == capacity) {
-        cacheMap.erase(cacheList.back().first);
-        cacheList.pop_back();
+    char readFromDisk(Key key) {
+      int fd = open(key.mountingPoint.c_str(), O_RDONLY);
+      if (fd == -1) {
+        perror("Error opening file");
+        throw std::runtime_error("Error opening file");
       }
-      cacheList.push_front(std::make_pair(key, value));
-      cacheMap[key] = cacheList.begin();
+
+      char temp[1];
+      ssize_t bytesRead = pread(fd, temp, 1, key.offset);
+      if (bytesRead == -1) {
+        perror("Error reading file");
+        throw std::runtime_error("Error reading file");
+      }
+      close(fd);
+
+      return temp[0];
     }
-  }
-};
 
-int main() {
-  return 0;
+  public:
+    char get(Key key) {
+      if (cacheMap.find(key) == cacheMap.end()) {
+        if (cacheList.size() == capacity) {
+          auto last = cacheList.back();
+          cacheList.pop_back();
+          cacheMap.erase(last.first);
+        }
+        char value = readFromDisk(key);
+        cacheList.emplace_front(key, value);
+        cacheMap[key] = cacheList.begin();
+        return value;
+      } else {
+        auto it = cacheMap[key];
+        cacheList.splice(cacheList.begin(), cacheList, it);
+        return it->second;
+      }
+    }
+  };
 }
-
-/* Some notes:
- * 1. Class is easier to code and maintain than a struct
- * 2. Even though struct is faster, it's negligible (virtual function is the devil)
- * 3. The code is not thread-safe (yet)
- * 4. The use of unordered_map and list is to achieve O(1) time complexity for both insert and delete
- * 5. The use of iterator is to achieve O(1) time complexity for both insert and delete
- * 6. Still finding the best way to access HDD (or SSD) for the cache data
- * 7. The code is semi LRU (Least Recently Used) cache for the list storage
- * */
