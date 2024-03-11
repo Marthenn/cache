@@ -21,7 +21,7 @@ namespace cache {
     std::list<std::pair<Key, char>> cacheList;
     std::unordered_map<Key, typename std::list<std::pair<Key, char>>::iterator> cacheMap;
 
-    char readFromDisk(Key key) {
+    static char readFromDisk(const Key& key) {
       int fd = open(key.mountingPoint.c_str(), O_RDONLY);
       if (fd == -1) {
         perror("Error opening file");
