@@ -32,7 +32,7 @@ namespace cache {
       return temp[0];
     }
 
-  public
+  public:
     Cache() : capacity(0), mountingPoint("/dev/sda") {}
     Cache(int capacity, const char* mountingPoint) : capacity(capacity), mountingPoint(mountingPoint) {}
 
