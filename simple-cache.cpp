@@ -4,19 +4,17 @@
 #include <unistd.h>
 #include <fcntl.h>
 #include <cstdio>
-#include <string>
 #include <stdexcept>
 
 namespace cache {
-  const char *const mountingPoint = "/dev/sda"; // change this to the path of the file you want to cache
-
   class Cache {
   private:
-    int capacity = 0;
+    const char *const mountingPoint;
+    const int capacity = 0;
     std::list<std::pair<off64_t, char>> cacheList;
     std::unordered_map<off64_t, typename std::list<std::pair<off64_t, char>>::iterator> cacheMap;
 
-    static char readFromDisk(const off64_t offset) {
+    char readFromDisk(const off64_t offset) {
       int fd = open(mountingPoint, O_RDONLY);
       if (fd == -1) {
         perror("Error opening file");
@@ -34,9 +32,9 @@ namespace cache {
       return temp[0];
     }
 
-  public:
-    Cache() : capacity(0) {}
-    Cache(int capacity) : capacity(capacity) {}
+  public
+    Cache() : capacity(0), mountingPoint("/dev/sda") {}
+    Cache(int capacity, const char* mountingPoint) : capacity(capacity), mountingPoint(mountingPoint) {}
 
     char get(const off64_t offset) {
       if (cacheMap.find(offset) == cacheMap.end()) {
@@ -45,7 +43,7 @@ namespace cache {
           cacheList.pop_back();
           cacheMap.erase(last.first);
         }
-        cacheList.push_front(std::make_pair(offset, readFromDisk(offset)));
+        cacheList.emplace_front(offset, readFromDisk(offset));
         cacheMap[offset] = cacheList.begin();
       } else {
         cacheList.splice(cacheList.begin(), cacheList, cacheMap[offset]);
