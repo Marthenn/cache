@@ -47,6 +47,7 @@ namespace cache {
         cacheMap[offset] = cacheList.begin();
       } else {
         cacheList.splice(cacheList.begin(), cacheList, cacheMap[offset]);
+        cacheMap[offset] = cacheList.begin();
       }
       return cacheMap[offset]->second;
     }
