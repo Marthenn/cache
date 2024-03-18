@@ -5,7 +5,6 @@
 #include <fcntl.h>
 #include <cstdio>
 #include <stdexcept>
-#include <vector>
 #include <fstream>
 #include <sstream>
 #include <iostream>
