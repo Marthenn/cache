@@ -6,6 +6,3 @@ cmake-build-debug
 test.cpp
 a.out
 test.txt
-
-# Trace for Testing
-*.trace
