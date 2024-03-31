@@ -40,13 +40,14 @@ int fd; // file descriptor for the mounting point
 // function prototypes for the eviction and prefetching algorithms
 void LRU();
 void LFU();
-void sequentialPrefetching();
-void leapPrefetching();
 
+void noPrefetching(void*, off64_t);
+void sequentialPrefetching(void*, off64_t);
+void leapPrefetching(void*, off64_t);
 
 // function pointers for the eviction and prefetching algorithms
 void (*evict)();
-void (*prefetch)();
+void (*prefetch)(void*, off64_t);
 
 // function to return the eviction algorithm based on the command line argument
 void (*evictionAlgorithm(const std::string& algorithm))() {
@@ -60,11 +61,13 @@ void (*evictionAlgorithm(const std::string& algorithm))() {
 }
 
 // function to return the prefetch algorithm based on the command line argument
-void (*prefetchAlgorithm(const std::string& algorithm))() {
+void (*prefetchAlgorithm(const std::string& algorithm))(void*, off64_t) {
     if (algorithm == "Sequential") {
         return sequentialPrefetching;
     } else if (algorithm == "Leap") {
         return leapPrefetching;
+    } else if (algorithm == "None") {
+      return noPrefetching;
     } else {
         throw std::invalid_argument("Invalid prefetch algorithm");
     }
@@ -208,11 +211,7 @@ void LFU() {
         }
 
         // read the byte from the disk
-        ssize_t bytesRead = pread(fd, temp, 1, offset+i);
-        if (bytesRead == -1) {
-          perror("Error reading file");
-          throw std::runtime_error("Error reading file");
-        }
+        prefetch(temp, offset+i);
 
         // add the cached data to the cacheList
         cacheList.emplace_front(Cache{1, temp[0]});
@@ -227,10 +226,19 @@ void LFU() {
   }
 }
 
-void sequentialPrefetching() {
-  std::cout << "Sequential Prefetching" << std::endl;
+void noPrefetching(void* buff, off64_t offset) {
+  ssize_t bytesRead = pread(fd, buff, 1, offset);
+  if (bytesRead == -1) {
+    perror("Error reading file");
+    throw std::runtime_error("Error reading file");
+  }
 }
 
-void leapPrefetching() {
+void sequentialPrefetching(void* buff, off64_t offset) {
+  off64_t lastOffset = -1;
+  std::string line;
+}
+
+void leapPrefetching(void* buff, off64_t offset) {
   std::cout << "Leap Prefetching" << std::endl;
 }
