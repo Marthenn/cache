@@ -8,6 +8,7 @@
 #include <sstream>
 #include <iostream>
 #include <algorithm>
+#include <sys/stat.h>
 
 // variables from the command line
 const char *mountingPoint;
@@ -20,6 +21,7 @@ int hit = 0;
 int total = 0;
 int fd; // file descriptor for the mounting point
 char temp[10000]; // temporary buffer for reading bytes from the disk
+ssize_t BLOCKSIZE; // block size of the disk
 
 // function prototypes for the eviction and prefetching algorithms
 void LRU();
@@ -58,22 +60,29 @@ ssize_t (*prefetchAlgorithm(const std::string& algorithm))(off64_t) {
 }
 
 int main(int argc, char *argv[]) {
-  // TODO: add command line arguments for algorithm, trace file, mounting point, and cache capacity
   if (argc < 6) {
     std::cerr << "Usage: " << argv[0] << " <mounting point> <trace file> <eviction algorithm> <prefetch algorithm> <cache capacity>" << std::endl;
     return 1;
   }
-  
+
+  // setting the command line arguments
   mountingPoint = argv[1];
   traceFile.open(argv[2]);
   evict = evictionAlgorithm(argv[3]);
   prefetch = prefetchAlgorithm(argv[4]);
   capacity = std::stol(argv[5]);
-
   if (traceFile.fail()) {
     std::cerr << "Error opening trace file" << std::endl;
     return 1;
   }
+
+   // setting the block size of the disk
+  struct stat st{};
+  if (stat(mountingPoint, &st) == -1) {
+    perror("Error getting file status");
+    throw std::runtime_error("Error getting file status");
+  }
+  BLOCKSIZE = st.st_blksize;
 
   // access the mounting point
   fd = open(mountingPoint, O_RDONLY);
@@ -217,9 +226,14 @@ ssize_t noPrefetching(off64_t offset) {
 }
 
 // https://www.ibm.com/docs/en/db2/11.5?topic=pool-sequential-prefetching
+// the idea is read data contiguously from the disk (sized of BLOCKSIZE currently)
 ssize_t sequentialPrefetching(off64_t offset) {
-  off64_t lastOffset = -1;
-  std::string line;
+  ssize_t bytesRead = pread(fd, temp, BLOCKSIZE, offset);
+  if (bytesRead == -1) {
+    perror("Error reading file");
+    throw std::runtime_error("Error reading file");
+  }
+  return bytesRead;
 }
 
 // https://www.usenix.org/system/files/atc20-maruf.pdf
@@ -228,4 +242,5 @@ ssize_t sequentialPrefetching(off64_t offset) {
 // careful about the latency caused by the heuristic
 ssize_t leapPrefetching(off64_t offset) {
   std::cout << "Leap Prefetching" << std::endl;
+  return -1;
 }
