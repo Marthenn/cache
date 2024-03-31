@@ -9,23 +9,6 @@
 #include <iostream>
 #include <algorithm>
 
-// implement prefetching algorithm --> sequential prefetching || next-line prefetcher --> make it modular as well
-// offset 1 and offset 2 --> miss --> prefetch 3
-
-// implement another prefetching algorithm from the paper below (leap)
-// https://www.usenix.org/system/files/atc20-maruf.pdf
-// the idea is looking at the different in offset of consecutive I/Os
-// if delta is small then prefetch the same size of delta
-// careful about the latency caused by the heuristic
-
-// use latency + hit rate with prefetch and without prefetch to compare the performance
-// LRU + sequential prefetching
-// LFU + sequential prefetching
-// LRU + leap prefetching
-// LFU + leap prefetching
-
-// NOTE: AVOID HARD CODING VARIABLES
-
 // variables from the command line
 const char *mountingPoint;
 long capacity;
@@ -36,18 +19,19 @@ std::ifstream traceFile;
 int hit = 0;
 int total = 0;
 int fd; // file descriptor for the mounting point
+char temp[10000]; // temporary buffer for reading bytes from the disk
 
 // function prototypes for the eviction and prefetching algorithms
 void LRU();
 void LFU();
 
-void noPrefetching(void*, off64_t);
-void sequentialPrefetching(void*, off64_t);
-void leapPrefetching(void*, off64_t);
+ssize_t noPrefetching(off64_t);
+ssize_t sequentialPrefetching(off64_t);
+ssize_t leapPrefetching(off64_t);
 
 // function pointers for the eviction and prefetching algorithms
 void (*evict)();
-void (*prefetch)(void*, off64_t);
+ssize_t (*prefetch)(off64_t);
 
 // function to return the eviction algorithm based on the command line argument
 void (*evictionAlgorithm(const std::string& algorithm))() {
@@ -61,7 +45,7 @@ void (*evictionAlgorithm(const std::string& algorithm))() {
 }
 
 // function to return the prefetch algorithm based on the command line argument
-void (*prefetchAlgorithm(const std::string& algorithm))(void*, off64_t) {
+ssize_t (*prefetchAlgorithm(const std::string& algorithm))(off64_t) {
     if (algorithm == "Sequential") {
         return sequentialPrefetching;
     } else if (algorithm == "Leap") {
@@ -113,7 +97,6 @@ int main(int argc, char *argv[]) {
 
 void LRU() {
   // cache structure to store the frequency of each byte
-  char temp[1]; // temporary buffer for reading bytes from the disk
   std::list<char> cacheList; // the list of cached bytes
   std::unordered_map<off64_t, typename std::list<char>::iterator> cacheMap; // point offset to the location in the list
 
@@ -139,23 +122,19 @@ void LRU() {
     for(int i = 0; i < size; i++){
       // if the byte is not in the cache, read it from the disk and add it to the cache
       if (cacheMap.find(offset+i) == cacheMap.end()) {
-        // if the cache is full, remove the last element
-        if (cacheMap.size() == capacity) {
-          auto last = cacheList.back();
-          cacheList.pop_back();
-          cacheMap.erase(last);
-        }
-
         // read the byte from the disk
-        ssize_t bytesRead = pread(fd, temp, 1, offset+i);
-        if (bytesRead == -1) {
-          perror("Error reading file");
-          throw std::runtime_error("Error reading file");
+        ssize_t bytesRead = prefetch(offset+i);
+
+        for(int j = 0; i < bytesRead; i++) {
+          if (cacheMap.size() == capacity) {
+            auto last = cacheList.back();
+            cacheList.pop_back();
+            cacheMap.erase(last);
+          }
+          cacheList.emplace_front(temp[j]);
+          cacheMap[offset+i] = cacheList.begin();
         }
 
-        // add the byte to the cache (at the front of the list for the LRU policy)
-        cacheList.emplace_front(temp[0]);
-        cacheMap[offset+i] = cacheList.begin();
       } else {
         // if the byte is in the cache, move it to the front of the list
         cacheList.splice(cacheList.begin(), cacheList, cacheMap[offset+i]);
@@ -175,7 +154,6 @@ void LFU() {
   } typedef Cache;
 
   // cache structure to store the frequency of each byte
-  char temp[1]; // temporary buffer for reading bytes from the disk
   std::list<Cache> cacheList; // the list of cached bytes
   std::unordered_map<off64_t, typename std::list<Cache>::iterator> cacheMap; // point an offset to the corresponding byte in the cache
 
@@ -201,21 +179,24 @@ void LFU() {
     for(int i = 0; i < size; i++){
       // if the byte is not in the cache, read it from the disk and add it to the cache
       if (cacheMap.find(offset+i) == cacheMap.end()) {
-        // if the cache is full, remove the least frequently used elemen
-        if (cacheMap.size() == capacity) {
-          auto last = std::min_element(cacheList.begin(), cacheList.end(), [](const Cache& a, const Cache& b) {
-            return a.frequency < b.frequency;
-          });
-          cacheMap.erase(last->frequency);
-          cacheList.erase(last);
-        }
 
         // read the byte from the disk
-        prefetch(temp, offset+i);
+        ssize_t bytesRead = prefetch(offset+i);
+        for (int j = 0; j < bytesRead; j++) {
+          // if the cache is full, remove the least frequently used element
+          if (cacheMap.size() == capacity) {
+            auto last = std::min_element(cacheList.begin(), cacheList.end(), [](const Cache& a, const Cache& b) {
+              return a.frequency < b.frequency;
+            });
+            cacheMap.erase(last->frequency);
+            cacheList.erase(last);
+          }
 
-        // add the cached data to the cacheList
-        cacheList.emplace_front(Cache{1, temp[0]});
-        cacheMap[offset+i] = cacheList.begin();
+          // add the cached data to the cacheList
+          cacheList.emplace_front(Cache{1, temp[j]});
+          cacheMap[offset+i] = cacheList.begin();
+        }
+
       } else {
         // if the byte is in the cache, add its frequency
         cacheMap[offset+i]->frequency++;
@@ -226,19 +207,25 @@ void LFU() {
   }
 }
 
-void noPrefetching(void* buff, off64_t offset) {
-  ssize_t bytesRead = pread(fd, buff, 1, offset);
+ssize_t noPrefetching(off64_t offset) {
+  ssize_t bytesRead = pread(fd, temp, 1, offset);
   if (bytesRead == -1) {
     perror("Error reading file");
     throw std::runtime_error("Error reading file");
   }
+  return bytesRead;
 }
 
-void sequentialPrefetching(void* buff, off64_t offset) {
+// https://www.ibm.com/docs/en/db2/11.5?topic=pool-sequential-prefetching
+ssize_t sequentialPrefetching(off64_t offset) {
   off64_t lastOffset = -1;
   std::string line;
 }
 
-void leapPrefetching(void* buff, off64_t offset) {
+// https://www.usenix.org/system/files/atc20-maruf.pdf
+// the idea is looking at the different in offset of consecutive I/Os
+// if delta is small then prefetch the same size of delta
+// careful about the latency caused by the heuristic
+ssize_t leapPrefetching(off64_t offset) {
   std::cout << "Leap Prefetching" << std::endl;
 }
