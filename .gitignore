@@ -8,4 +8,4 @@ a.out
 test.txt
 
 # Trace files
-*.trace
+traces/

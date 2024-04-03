@@ -15,7 +15,7 @@ const char *mountingPoint;
 long capacity;
 std::ifstream traceFile;
 
-
+// TODO: move to a header files for cleaner code
 // global variables for the cache
 int hit = 0;
 int total = 0;
@@ -33,7 +33,7 @@ ssize_t leapPrefetching(off64_t);
 
 // function pointers for the eviction and prefetching algorithms
 void (*evict)();
-ssize_t (*prefetch)(off64_t);
+ssize_t (*prefetch)(off64_t); //TODO: change to args or smth like argv in main
 
 // function to return the eviction algorithm based on the command line argument
 void (*evictionAlgorithm(const std::string& algorithm))() {
@@ -191,6 +191,18 @@ void LFU() {
 
         // read the byte from the disk
         ssize_t bytesRead = prefetch(offset+i);
+        /*
+         * pread(size, offset) ...
+         * char temp[]....
+         * prefetch()??
+         *      pread... but go to cache map directly
+         *
+         *
+         *
+         * [???]
+         * the pread for miss and prefetch should be different since prefetch can also be done when hit (not only miss)
+         * */
+
         for (int j = 0; j < bytesRead; j++) {
           // if the cache is full, remove the least frequently used element
           if (cacheMap.size() == capacity) {
