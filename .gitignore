@@ -6,6 +6,7 @@ cmake-build-debug
 test.cpp
 a.out
 test.txt
+dummy
 
 # Trace files
 traces/
