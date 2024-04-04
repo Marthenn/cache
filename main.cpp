@@ -21,5 +21,8 @@ int main(int argc, char *argv[]) {
   initPrefetch(argv[4]);
   capacity = std::stol(argv[5]);
 
+  // initialize the buffer
+  buffer = std::make_unique<char[]>(PAGE_SIZE*capacity);
+
   return 0;
 }
