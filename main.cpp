@@ -3,7 +3,8 @@
 #include "prefetch/prefetch.h++"
 #include <iostream>
 #include <memory>
-#include <sys/stat.h>
+#include <fcntl.h>
+#include <sstream>
 
 int main(int argc, char *argv[]) {
   if (argc < 6) {
@@ -23,6 +24,36 @@ int main(int argc, char *argv[]) {
 
   // initialize the buffer
   buffer = std::make_unique<char[]>(PAGE_SIZE*capacity);
+
+  // open the file
+  fd = open(mountingPoint, O_RDONLY);
+  if (fd == -1) {
+    std::cerr << "Error: could not open file " << mountingPoint << std::endl;
+    return 1;
+  }
+
+  // read the trace file line by line
+  std::string line;
+  while (std::getline(traceFile, line)) {
+    std::istringstream iss(line);
+    double timestamp;
+    int deviceID, size, rw;
+    off64_t offset;
+
+    if (!(iss >> timestamp >> deviceID >> offset >> size >> rw)) {
+      std::cerr << "Error: could not read line " << line << std::endl;
+      return 1;
+    }
+
+    // only consider reads
+    if (rw != 1) continue;
+
+    // set the current offset
+    curr_offset = offset;
+
+    evict(offset);
+    prefetch();
+  }
 
   return 0;
 }
