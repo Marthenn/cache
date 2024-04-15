@@ -5,6 +5,7 @@
 #include <memory>
 #include <fcntl.h>
 #include <sstream>
+#include <chrono>
 
 int main(int argc, char *argv[]) {
   if (argc < 6) {
@@ -32,6 +33,8 @@ int main(int argc, char *argv[]) {
     return 1;
   }
 
+  auto start_time = std::chrono::high_resolution_clock::now();
+
   // read the trace file line by line
   std::string line;
   while (std::getline(traceFile, line)) {
@@ -51,9 +54,15 @@ int main(int argc, char *argv[]) {
     // set the current offset
     curr_offset = offset;
 
+    total++;
     evict(offset);
     prefetch();
   }
+
+  auto end_time = std::chrono::high_resolution_clock::now();
+  std::chrono::duration<double> elapsed_time = end_time - start_time;
+  std::cout << "Elapsed time: " << elapsed_time.count() << "s" << std::endl;
+  std::cout << "Hit rate: " << (double)hit/(double)total << std::endl;
 
   return 0;
 }
