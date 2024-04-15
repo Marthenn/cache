@@ -7,22 +7,23 @@
 #include <fstream>
 
 // function pointer for eviction and prefetch
-void (*evict)(off64_t);
-void (*prefetch)();
+extern void (*evict)(off64_t);
+extern void (*prefetch)();
 
 // hit rate variables
-int hit = 0;
-int total = 0;
-off64_t curr_offset;
+extern unsigned long long hit;
+extern unsigned long long lastHit;
+extern unsigned long long total;
+extern off64_t curr_offset;
 
 // file variables
-int fd;
-const char* mountingPoint;
-std::ifstream traceFile;
+extern int fd;
+extern const char* mountingPoint;
+extern std::ifstream traceFile;
 
 // buffer variables
-std::unique_ptr<char[]> buffer;
-long capacity;
+extern std::unique_ptr<char[]> buffer;
+extern unsigned long long capacity;
 
 // system variables
 // note: change this if the block size is different
@@ -44,6 +45,6 @@ struct BaseCacheStruct {
   virtual void erase(off64_t) = 0;
   virtual CacheData find(off64_t) = 0;
 };
-BaseCacheStruct* cache;
+extern BaseCacheStruct* cache;
 
 #endif //CACHE_VARIABLES_H
